@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+client/node_modules/
+
+# Production build
+client/dist/
+
+# SQLite WAL and lock files (the database itself pos_system.db is seeded automatically or included)
+server/data/*.db-shm
+server/data/*.db-wal
+
+# Uploaded test temp files (keep directory structure)
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Environment variables
+.env
+.env.local
+
+# Logs and OS files
+*.log
+npm-debug.log*
+yarn-debug.log*
+.DS_Store
+Thumbs.db
