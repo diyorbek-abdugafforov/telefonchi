@@ -4,6 +4,7 @@ client/node_modules/
 
 # Production build
 client/dist/
+dist/
 
 # SQLite WAL and lock files (the database itself pos_system.db is seeded automatically or included)
 server/data/*.db-shm
