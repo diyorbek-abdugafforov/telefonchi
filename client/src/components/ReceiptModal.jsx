@@ -1,10 +1,27 @@
-import React, { useState } from 'react';
-import { Printer, X, FileText, Check, ShieldCheck, Smartphone } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Printer, X, FileText, Check, ShieldCheck, Smartphone, QrCode } from 'lucide-react';
+import QRCode from 'qrcode';
 import { useApp } from '../context/AppContext';
 
 export default function ReceiptModal({ sale, onClose }) {
   const { settings } = useApp();
   const [receiptType, setReceiptType] = useState('thermal80'); // 'thermal80' or 'a4'
+  const [receiptQrUrl, setReceiptQrUrl] = useState('');
+
+  useEffect(() => {
+    if (!sale) return;
+    const qrData = JSON.stringify({
+      doc: "RECEIPT",
+      num: sale.sale_number,
+      sum: sale.final_amount,
+      date: new Date(sale.created_at || Date.now()).toLocaleDateString(),
+      branch: sale.branch_name || "Bosh filial",
+      check_url: `https://smartphonepro.uz/check/${sale.sale_number}`
+    });
+    QRCode.toDataURL(qrData, { width: 160, margin: 1 })
+      .then(url => setReceiptQrUrl(url))
+      .catch(console.error);
+  }, [sale]);
 
   if (!sale) return null;
 
@@ -141,8 +158,15 @@ export default function ReceiptModal({ sale, onClose }) {
                   </div>
                 </div>
 
-                {/* Warranty Notice */}
-                <div className="pt-3 text-center text-[10px] text-gray-700 space-y-1">
+                {/* Warranty Notice & QR */}
+                <div className="pt-2 text-center text-[10px] text-gray-700 space-y-1">
+                  {receiptQrUrl && (
+                    <div className="pt-1 pb-1 flex flex-col items-center justify-center">
+                      <img src={receiptQrUrl} alt="Receipt QR" className="w-24 h-24 border border-gray-200 p-0.5 rounded bg-white shadow-2xs" />
+                      <span className="text-[9px] text-gray-500 font-sans mt-0.5">Kafolat va Fiskal tekshirish QR</span>
+                    </div>
+                  )}
+
                   <p className="font-bold text-gray-900">Do'kon kafolati: 12 oy</p>
                   <p>Kafolat amal qilish muddati: {new Date(sale.warranty_end_date || Date.now()).toLocaleDateString('uz-UZ')} gacha.</p>
                   <p className="text-[9px] text-gray-500 pt-1">
@@ -163,7 +187,10 @@ export default function ReceiptModal({ sale, onClose }) {
                     <p className="text-xs text-gray-600">{sale.branch_address || "Toshkent sh., Malika Savdo Markazi, A-24"}</p>
                     <p className="text-xs text-gray-600">Telefon: {settings.phone || "+998 71 200 00 01"}</p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right flex flex-col items-end">
+                    {receiptQrUrl && (
+                      <img src={receiptQrUrl} alt="Contract QR" className="w-16 h-16 border border-gray-300 p-0.5 rounded mb-1 bg-white shadow-2xs" />
+                    )}
                     <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 font-bold rounded border border-blue-200 text-xs mb-1">
                       KAFOLAT TALONI & SHARTNOMA
                     </span>

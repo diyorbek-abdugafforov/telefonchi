@@ -8,6 +8,7 @@ import { apiRequest } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { PhoneThumbnail, PhotoPreviewModal, ImageUploader } from '../utils/phoneImages';
+import DeviceQrLabelModal from '../components/DeviceQrLabelModal';
 
 // Client-side Luhn Algorithm checker for instant live form feedback
 function checkLuhn(imei) {
@@ -1091,28 +1092,12 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* LABEL QR PRINT MODAL */}
+      {/* Real QR Code & Label Print Modal */}
       {activeLabelDevice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-xs w-full text-center space-y-4 shadow-2xl">
-            <h4 className="text-sm font-bold text-slate-800">Shtrix-Kod / QR Narx Yorlig'i</h4>
-            
-            <div className="p-4 bg-gray-50 border rounded-2xl font-mono text-center space-y-2">
-              <div className="font-extrabold text-sm text-gray-900">{activeLabelDevice.model_name}</div>
-              <div className="text-[11px] text-gray-600">{activeLabelDevice.storage} • {activeLabelDevice.color_name}</div>
-              <div className="w-32 h-32 mx-auto bg-gray-200 flex items-center justify-center rounded-xl text-gray-500 font-sans text-xs border border-dashed border-gray-400">
-                [ QR KOD ]<br />{activeLabelDevice.imei1.slice(0, 10)}
-              </div>
-              <div className="text-xs font-bold text-gray-800">IMEI: {activeLabelDevice.imei1}</div>
-              <div className="text-sm font-black text-blue-600">{Number(activeLabelDevice.selling_price).toLocaleString()} UZS</div>
-            </div>
-
-            <div className="flex justify-between gap-2">
-              <button onClick={() => setActiveLabelDevice(null)} className="px-4 py-2 text-xs font-semibold text-slate-500">Yopish</button>
-              <button onClick={() => window.print()} className="px-5 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-md">Chop Etish</button>
-            </div>
-          </div>
-        </div>
+        <DeviceQrLabelModal
+          device={activeLabelDevice}
+          onClose={() => setActiveLabelDevice(null)}
+        />
       )}
 
       {/* QUICK ADD MODEL MODAL (When phone is newly released) */}
