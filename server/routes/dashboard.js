@@ -193,6 +193,58 @@ router.get('/stats', authenticateToken, (req, res) => {
     LIMIT 5
   `).all();
 
+  // 11. Visual Breakdown Analytics (for Donut and Bar charts)
+  const brandBreakdown = db.prepare(`
+    SELECT COALESCE(b.name, 'Boshqa') as name, COUNT(d.id) as value
+    FROM devices d
+    JOIN models m ON d.model_id = m.id
+    LEFT JOIN brands b ON m.brand_id = b.id
+    WHERE d.status = 'omborda' ${stockBranchFilter}
+    GROUP BY b.id, b.name
+    ORDER BY value DESC
+    LIMIT 5
+  `).all();
+
+  const branchDistribution = db.prepare(`
+    SELECT br.name as name, COUNT(d.id) as count
+    FROM branches br
+    LEFT JOIN devices d ON d.branch_id = br.id AND d.status = 'omborda'
+    GROUP BY br.id, br.name
+    ORDER BY count DESC
+    LIMIT 5
+  `).all();
+
+  // 12. Recent Activities Feed
+  const recentSalesList = db.prepare(`
+    SELECT s.id, s.sale_number as title, 'Muvaffaqiyatli sotuv rasmiylashtirildi' as subtitle,
+           s.final_amount as amount, s.created_at, 'sale' as type, COALESCE(u.name, 'Sotuvchi') as user_name
+    FROM sales s
+    LEFT JOIN users u ON s.seller_id = u.id
+    WHERE s.status = 'completed'
+    ORDER BY s.id DESC
+    LIMIT 3
+  `).all();
+
+  const recentBuyoutsList = db.prepare(`
+    SELECT b.id, b.model_name as title, 'Aholidan skupka qabul qilindi' as subtitle,
+           b.agreed_price as amount, b.created_at, 'buyout' as type, COALESCE(b.customer_name, 'Mijoz') as user_name
+    FROM buyouts b
+    ORDER BY b.id DESC
+    LIMIT 2
+  `).all();
+
+  const recentRepairsList = db.prepare(`
+    SELECT r.id, r.model_name as title, 'Servisga ta''mirga topshirildi' as subtitle,
+           r.total_cost as amount, r.created_at, 'repair' as type, COALESCE(r.customer_name, 'Mijoz') as user_name
+    FROM repairs r
+    ORDER BY r.id DESC
+    LIMIT 2
+  `).all();
+
+  const recentActivities = [...recentSalesList, ...recentBuyoutsList, ...recentRepairsList]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 5);
+
   // Sanitize for Seller / Cashier
   const isPrivileged = role === 'admin' || role === 'manager';
 
@@ -229,6 +281,9 @@ router.get('/stats', authenticateToken, (req, res) => {
       chartSales: isPrivileged 
         ? chartSales 
         : chartSales.map(c => ({ sale_date: c.sale_date, count: c.count })),
+      brandBreakdown,
+      branchDistribution,
+      recentActivities,
       alerts: {
         lowStockAccessories,
         agingPhones,
