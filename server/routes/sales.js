@@ -65,6 +65,65 @@ router.get('/', authenticateToken, (req, res) => {
   res.json({ success: true, data: sanitizedSales });
 });
 
+// Quick lookup of a sale by sale_number or device IMEI (for returns / vozvrat)
+router.get('/lookup/by-term', authenticateToken, (req, res) => {
+  const { term } = req.query;
+  if (!term || term.trim() === '') {
+    return res.status(400).json({ success: false, error: "Qidiruv so'zi kiritilishi shart" });
+  }
+
+  const cleanTerm = term.trim();
+  // 1. Try finding sale directly by sale_number
+  let sale = db.prepare(`
+    SELECT s.*, c.name as customer_name, c.phone as customer_phone, u.name as seller_name
+    FROM sales s
+    LEFT JOIN customers c ON s.customer_id = c.id
+    LEFT JOIN users u ON s.seller_id = u.id
+    WHERE s.sale_number = ?
+    LIMIT 1
+  `).get(cleanTerm);
+
+  // 2. If not found, try finding via device IMEI (sale_items -> devices)
+  if (!sale) {
+    const itemMatch = db.prepare(`
+      SELECT si.sale_id
+      FROM sale_items si
+      JOIN devices d ON si.device_id = d.id
+      WHERE d.imei1 = ? OR d.imei2 = ? OR d.serial_number = ?
+      ORDER BY si.id DESC LIMIT 1
+    `).get(cleanTerm, cleanTerm, cleanTerm);
+
+    if (itemMatch) {
+      sale = db.prepare(`
+        SELECT s.*, c.name as customer_name, c.phone as customer_phone, u.name as seller_name
+        FROM sales s
+        LEFT JOIN customers c ON s.customer_id = c.id
+        LEFT JOIN users u ON s.seller_id = u.id
+        WHERE s.id = ?
+        LIMIT 1
+      `).get(itemMatch.sale_id);
+    }
+  }
+
+  if (!sale) {
+    return res.status(404).json({ success: false, error: `Ushbu ma'lumot bo'yicha (${cleanTerm}) sotuv topilmadi` });
+  }
+
+  const items = db.prepare(`
+    SELECT si.*, d.imei1, d.imei2, d.image_url, d.condition_type, d.battery_pct,
+           m.name as model_name
+    FROM sale_items si
+    LEFT JOIN devices d ON si.device_id = d.id
+    LEFT JOIN models m ON d.model_id = m.id
+    WHERE si.sale_id = ?
+  `).all(sale.id);
+
+  res.json({
+    success: true,
+    data: sanitizeSaleData({ ...sale, items }, req.user.role)
+  });
+});
+
 // Get single sale by ID (for receipt print or invoice view)
 router.get('/:id', authenticateToken, (req, res) => {
   const sale = db.prepare(`
@@ -456,7 +515,7 @@ router.post('/checkout', authenticateToken, (req, res) => {
   }
 });
 
-// Cancel sale / Return phone
+// Cancel sale / Return phone (Mijoz telefonni qaytarib olib kelganda vozvrat qilish)
 router.post('/:id/return', authenticateToken, (req, res) => {
   const { id } = req.params;
   const { reason, cash_account_id } = req.body;
@@ -465,8 +524,9 @@ router.post('/:id/return', authenticateToken, (req, res) => {
     return res.status(400).json({ success: false, error: 'Qaytarish sababi kiritilishi shart' });
   }
 
-  if (req.user.role !== 'admin' && req.user.role !== 'manager') {
-    return res.status(403).json({ success: false, error: "Sotuvni bekor qilish uchun faqat ma'mur yoki menejerda ruxsat bor" });
+  // Admin, Manager, Cashier, or Seller can process customer returns
+  if (!['admin', 'manager', 'cashier', 'seller'].includes(req.user.role)) {
+    return res.status(403).json({ success: false, error: "Sotuvni qaytarish uchun ruxsat etilmagan lavozim" });
   }
 
   const sale = db.prepare('SELECT * FROM sales WHERE id = ?').get(id);
@@ -475,7 +535,7 @@ router.post('/:id/return', authenticateToken, (req, res) => {
   }
 
   if (sale.status === 'returned') {
-    return res.status(400).json({ success: false, error: 'Bu sotuv allaqachon qaytarilgan' });
+    return res.status(400).json({ success: false, error: 'Bu sotuv allaqachon qaytarilgan (Vozvrat qilingan)' });
   }
 
   const returnTransaction = db.transaction(() => {
@@ -505,15 +565,16 @@ router.post('/:id/return', authenticateToken, (req, res) => {
       }
     }
 
-    if (cash_account_id && sale.final_amount > 0) {
-      db.prepare('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?').run(sale.final_amount, cash_account_id);
+    const accountId = cash_account_id || db.prepare('SELECT id FROM cash_accounts WHERE branch_id = ? AND is_active = 1 LIMIT 1').get(sale.branch_id)?.id || 1;
+    if (accountId && sale.final_amount > 0) {
+      db.prepare('UPDATE cash_accounts SET balance = balance - ? WHERE id = ?').run(sale.final_amount, accountId);
       db.prepare(`
         INSERT INTO cash_transactions (
           branch_id, cash_account_id, type, category, amount, currency, description, reference_type, reference_id, created_by
         ) VALUES (?, ?, 'out', 'other', ?, 'UZS', ?, 'sale_return', ?, ?)
       `).run(
         sale.branch_id,
-        cash_account_id,
+        accountId,
         sale.final_amount,
         `Mijozga pul qaytarildi (Bekor qilingan chek: ${sale.sale_number})`,
         sale.id,

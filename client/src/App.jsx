@@ -17,6 +17,7 @@ import RepairsPage from './pages/RepairsPage';
 import ReportsPage from './pages/ReportsPage';
 import StaffSecurityPage from './pages/StaffSecurityPage';
 import SettingsPage from './pages/SettingsPage';
+import LoginPage from './pages/LoginPage';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -47,6 +48,10 @@ function AppContent() {
         </div>
       </div>
     );
+  }
+
+  if (!user) {
+    return <LoginPage />;
   }
 
   const renderPage = () => {

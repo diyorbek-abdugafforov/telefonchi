@@ -61,6 +61,28 @@ export default function PosPage() {
   const [returnModalOpen, setReturnModalOpen] = useState(false);
   const [saleToReturn, setSaleToReturn] = useState(null);
   const [returnReason, setReturnReason] = useState('');
+  const [lookupTerm, setLookupTerm] = useState('');
+  const [lookupLoading, setLookupLoading] = useState(false);
+
+  const handleLookupSale = async (e) => {
+    if (e) e.preventDefault();
+    if (!lookupTerm.trim()) {
+      showToast("IMEI yoki Chek raqamini kiriting", "error");
+      return;
+    }
+    setLookupLoading(true);
+    try {
+      const res = await apiRequest(`/sales/lookup/by-term?term=${encodeURIComponent(lookupTerm.trim())}`);
+      if (res.success && res.data) {
+        setSaleToReturn(res.data);
+        showToast("Sotuv hujjati topildi!");
+      }
+    } catch (err) {
+      showToast(err.message || "Sotuv topilmadi", "error");
+    } finally {
+      setLookupLoading(false);
+    }
+  };
 
   // Load catalog and customers
   const loadData = async () => {
@@ -283,6 +305,7 @@ export default function PosPage() {
         setReturnModalOpen(false);
         setSaleToReturn(null);
         setReturnReason('');
+        setLookupTerm('');
         loadData();
       }
     } catch (err) {
@@ -457,10 +480,24 @@ export default function PosPage() {
 
         {/* Recent sales table & Return action */}
         <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
               Oxirgi Sotuvlar Tarixi & Cheklar
             </h4>
+            {canCancelSales() && (
+              <button
+                onClick={() => {
+                  setSaleToReturn(null);
+                  setLookupTerm('');
+                  setReturnReason('');
+                  setReturnModalOpen(true);
+                }}
+                className="btn-sm bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Mijozdan Telefonni Qaytarish (Vozvrat)</span>
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto text-xs">
@@ -951,45 +988,209 @@ export default function PosPage() {
         </div>
       )}
 
-      {/* Return Sale Modal */}
-      {returnModalOpen && saleToReturn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full border border-slate-200 dark:border-slate-800 space-y-4">
-            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 text-rose-600">
-              <AlertCircle className="w-5 h-5" />
-              <span>Sotuvni Bekor Qilish & Qaytarish</span>
-            </h4>
-            <p className="text-xs text-slate-500">
-              Chek №: <strong className="font-mono text-slate-800 dark:text-slate-200">{saleToReturn.sale_number}</strong>. Tovar avtomatik omborga qaytadi va kassa qoldig'i to'g'rilanadi.
-            </p>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                Qaytarish sababi:
-              </label>
-              <textarea
-                value={returnReason}
-                onChange={(e) => setReturnReason(e.target.value)}
-                placeholder="Mijoz boshqa modelga almashtirmoqchi / brak aniqlandi..."
-                className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs"
-                rows={3}
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t">
+      {/* Enhanced Return Sale / Vozvrat Modal */}
+      {returnModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-lg w-full border border-slate-200 dark:border-slate-800 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h4 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 text-rose-600">
+                <RefreshCw className="w-5 h-5 text-rose-600" />
+                <span>Mijozdan Telefonni Qaytarish (Vozvrat)</span>
+              </h4>
               <button
-                onClick={() => setReturnModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl"
+                onClick={() => {
+                  setReturnModalOpen(false);
+                  setSaleToReturn(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 font-bold"
               >
-                Bekor qilish
-              </button>
-              <button
-                onClick={handleReturnSale}
-                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold"
-              >
-                Qaytarishni Tasdiqlash
+                ✕
               </button>
             </div>
+
+            {/* STEP 1: Search by IMEI or Sale number if no sale chosen */}
+            {!saleToReturn ? (
+              <div className="space-y-4">
+                <p className="text-xs text-slate-500">
+                  Mijoz qaytarib olib kelgan telefonning <strong>IMEI</strong> raqamini yoki xarid cheki raqamini kiriting:
+                </p>
+
+                <form onSubmit={handleLookupSale} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={lookupTerm}
+                    onChange={(e) => setLookupTerm(e.target.value)}
+                    placeholder="Masalan: 356984... yoki SALE-2026..."
+                    className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none"
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    disabled={lookupLoading}
+                    className="btn-primary text-xs px-4"
+                  >
+                    {lookupLoading ? 'Qidirilmoqda...' : 'Topish'}
+                  </button>
+                </form>
+
+                <div className="pt-2">
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Yoki oxirgi sotuvlardan tanlang:
+                  </p>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {recentSales.filter(s => s.status === 'completed').slice(0, 5).map(s => (
+                      <div
+                        key={s.id}
+                        onClick={() => setSaleToReturn(s)}
+                        className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-rose-300 dark:hover:border-rose-900 bg-slate-50/50 dark:bg-slate-800/40 flex items-center justify-between cursor-pointer group"
+                      >
+                        <div>
+                          <p className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-rose-600">
+                            Chek {s.sale_number}
+                          </p>
+                          <p className="text-[10px] text-slate-400">
+                            {s.customer_name || 'Oddiy mijoz'} • {new Date(s.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white">
+                            {Number(s.final_amount).toLocaleString()} UZS
+                          </p>
+                          <span className="text-[10px] text-rose-600 font-bold">Tanlash &rarr;</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* STEP 2: Confirm Return Details */
+              <div className="space-y-4">
+                
+                {/* Sale info badge */}
+                <div className="p-3.5 rounded-2xl bg-rose-50/60 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-rose-700 dark:text-rose-300">
+                      Chek №: {saleToReturn.sale_number}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSaleToReturn(null)}
+                      className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
+                    >
+                      Boshqa chekni tanlash
+                    </button>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-300">
+                    Mijoz: <strong>{saleToReturn.customer_name || 'Oddiy mijoz'}</strong> {saleToReturn.customer_phone ? `(${saleToReturn.customer_phone})` : ''}
+                  </p>
+                  <p className="text-slate-600 dark:text-slate-300">
+                    Sotuvchi: <strong>{saleToReturn.seller_name || 'Kassir'}</strong>
+                  </p>
+                  <p className="text-base font-extrabold text-slate-900 dark:text-white pt-1 border-t border-rose-200/60 dark:border-rose-900/40">
+                    Qaytariladigan summa: {Number(saleToReturn.final_amount).toLocaleString()} UZS
+                  </p>
+                </div>
+
+                {/* Items in sale */}
+                {saleToReturn.items && saleToReturn.items.length > 0 && (
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-3 space-y-2">
+                    <p className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
+                      Omborga qaytadigan tovarlar:
+                    </p>
+                    {saleToReturn.items.map((it, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs py-1 border-b border-slate-100 dark:border-slate-800 last:border-0">
+                        <div>
+                          <p className="font-bold text-slate-800 dark:text-slate-200">
+                            {it.model_name || it.item_name || 'Telefon'}
+                          </p>
+                          {it.imei1 && (
+                            <p className="font-mono text-[10px] text-slate-400">
+                              IMEI: {it.imei1}
+                            </p>
+                          )}
+                        </div>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
+                          {Number(it.unit_price).toLocaleString()} UZS
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Refund Cash Account */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Pul qaysi kassadan chiqariladi?
+                  </label>
+                  <select
+                    value={selectedCashAccount}
+                    onChange={(e) => setSelectedCashAccount(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold"
+                  >
+                    {cashAccounts.map(ca => (
+                      <option key={ca.id} value={ca.id}>
+                        {ca.name} (Qoldiq: {Number(ca.balance).toLocaleString()} {ca.currency})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Return Reason */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Qaytarish sababi: *
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {[
+                      "Brak / Texnik nosozlik",
+                      "Mijoz boshqa modelga almashtirdi",
+                      "Mijoz fikri o'zgardi (yoqmadi)",
+                      "Chek xato urilgan"
+                    ].map(r => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setReturnReason(r)}
+                        className="text-[10px] px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950/60 text-slate-600 dark:text-slate-300 cursor-pointer"
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    value={returnReason}
+                    onChange={(e) => setReturnReason(e.target.value)}
+                    placeholder="Qaytarish sababini batafsil yozing..."
+                    className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs"
+                    rows={2}
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    onClick={() => {
+                      setReturnModalOpen(false);
+                      setSaleToReturn(null);
+                    }}
+                    className="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl"
+                  >
+                    Bekor qilish
+                  </button>
+                  <button
+                    onClick={handleReturnSale}
+                    className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Vozvratni Tasdiqlash (Omborga qaytarish)</span>
+                  </button>
+                </div>
+
+              </div>
+            )}
+
           </div>
         </div>
       )}

@@ -11,27 +11,14 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     async function loadUser() {
       if (!token) {
-        // Auto login as admin for initial smooth demonstration
-        try {
-          const res = await apiRequest('/auth/switch-demo', {
-            method: 'POST',
-            body: { role: 'admin' }
-          });
-          if (res.success) {
-            localStorage.setItem('token', res.token);
-            setToken(res.token);
-            setUser(res.user);
-          }
-        } catch (e) {
-          console.error('Auto login error:', e);
-        }
+        setUser(null);
         setLoading(false);
         return;
       }
 
       try {
         const res = await apiRequest('/auth/me');
-        if (res.success) {
+        if (res.success && res.user) {
           setUser(res.user);
         } else {
           logout();
@@ -56,8 +43,9 @@ export function AuthProvider({ children }) {
       localStorage.setItem('token', res.token);
       setToken(res.token);
       setUser(res.user);
-      return res.user;
+      return res;
     }
+    throw new Error(res.error || "Login yoki parol noto'g'ri");
   };
 
   const logout = async () => {
@@ -110,7 +98,7 @@ export function AuthProvider({ children }) {
   };
 
   const canCancelSales = () => {
-    return user?.role === 'admin' || user?.role === 'manager';
+    return user?.role === 'admin' || user?.role === 'manager' || user?.role === 'cashier' || user?.role === 'seller';
   };
 
   return (

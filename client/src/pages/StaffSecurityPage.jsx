@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, Users, Key, AlertTriangle, History, Clock, 
-  UserPlus, UserX, UserCheck, Smartphone, Globe, LogOut, CheckCircle, RefreshCw
+  UserPlus, UserX, UserCheck, Smartphone, Globe, LogOut, CheckCircle, RefreshCw,
+  Edit3, Lock, Sparkles
 } from 'lucide-react';
 import { apiRequest } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +24,10 @@ export default function StaffSecurityPage() {
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showTerminateModal, setShowTerminateModal] = useState(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [showEditModal, setShowEditModal] = useState(null);
+  const [editForm, setEditForm] = useState({});
 
   // Add staff form
   const [addForm, setAddForm] = useState({
@@ -151,6 +156,42 @@ export default function StaffSecurityPage() {
       const res = await apiRequest(`/staff/${userId}/reactivate`, { method: 'POST' });
       if (res.success) {
         showToast(res.message);
+        loadStaff();
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (!showPasswordModal || !newPassword) return;
+    try {
+      const res = await apiRequest(`/staff/${showPasswordModal.id}/password`, {
+        method: 'PUT',
+        body: { password: newPassword }
+      });
+      if (res.success) {
+        showToast(res.message);
+        setShowPasswordModal(null);
+        setNewPassword('');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const handleUpdateStaff = async (e) => {
+    e.preventDefault();
+    if (!showEditModal) return;
+    try {
+      const res = await apiRequest(`/staff/${showEditModal.id}`, {
+        method: 'PUT',
+        body: editForm
+      });
+      if (res.success) {
+        showToast(res.message);
+        setShowEditModal(null);
         loadStaff();
       }
     } catch (err) {
@@ -318,22 +359,61 @@ export default function StaffSecurityPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3.5 text-right">
+                        <td className="px-4 py-3.5 text-right space-x-1.5 whitespace-nowrap">
+                          {/* Reset Password */}
+                          <button
+                            onClick={() => {
+                              setShowPasswordModal(s);
+                              setNewPassword('');
+                            }}
+                            className="btn-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-300"
+                            title="Parolni yangilash"
+                          >
+                            <Key className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Parol</span>
+                          </button>
+
+                          {/* Edit Details */}
+                          {s.role !== 'admin' && (
+                            <button
+                              onClick={() => {
+                                setShowEditModal(s);
+                                setEditForm({
+                                  name: s.name,
+                                  phone: s.phone || '',
+                                  role: s.role,
+                                  branch_id: s.branch_id || '',
+                                  base_salary: s.base_salary,
+                                  commission_pct: s.commission_pct
+                                });
+                              }}
+                              className="btn-sm bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                              title="Ma'lumotlarni tahrirlash"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Tahrirlash</span>
+                            </button>
+                          )}
+
+                          {/* Terminate or Reactivate */}
                           {s.role !== 'admin' && (
                             isArchived ? (
                               <button
                                 onClick={() => handleReactivateStaff(s.id)}
-                                className="btn-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                className="btn-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                title="Qayta faollashtirish (Blokdan chiqarish)"
                               >
-                                Qayta tiklash
+                                <UserCheck className="w-3.5 h-3.5" />
+                                <span>Qayta tiklash</span>
                               </button>
                             ) : (
                               <button
                                 onClick={() => setShowTerminateModal(s)}
-                                className="btn-sm bg-rose-50 text-rose-700 hover:bg-rose-100 ml-auto"
+                                className="btn-sm bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300"
+                                title="Ishdan bo'shatish (Bloklash)"
                               >
                                 <UserX className="w-3.5 h-3.5" />
-                                Ishdan bo'shatish
+                                <span>Ishdan bo'shatish</span>
                               </button>
                             )
                           )}
@@ -746,6 +826,200 @@ export default function StaffSecurityPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Reset / Set Staff Password */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-700">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Key className="w-5 h-5 text-indigo-600" />
+                Parolni Yangilash / Berish
+              </h3>
+              <button
+                onClick={() => setShowPasswordModal(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 mt-2">
+              Xodim: <strong className="text-slate-800 dark:text-slate-200">{showPasswordModal.name}</strong> (login: @{showPasswordModal.login})
+            </p>
+
+            <form onSubmit={handleResetPassword} className="space-y-4 mt-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Yangi Maxfiy Parol *
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Masalan: parol123"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 font-mono"
+                  />
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewPassword('pass' + Math.floor(1000 + Math.random() * 9000))}
+                    className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold"
+                  >
+                    <Sparkles className="w-3 h-3" /> Tasodifiy yangi parol yaratish
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-xl text-[11px] text-blue-800 dark:text-blue-300">
+                Parol o'rnatilgach, xodimning eski seanslari avtomatik yopiladi va u yangi parol bilan kirishi kerak bo'ladi.
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordModal(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold border border-slate-300 text-slate-700 hover:bg-slate-100"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md"
+                >
+                  Parolni Saqlash
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Staff Details */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-700">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-indigo-600" />
+                Xodim Ma'lumotlarini Tahrirlash
+              </h3>
+              <button
+                onClick={() => setShowEditModal(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateStaff} className="space-y-4 mt-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    F.I.Sh *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.name || ''}
+                    onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Telefon raqami
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.phone || ''}
+                    onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Roli (Lavozimi)
+                  </label>
+                  <select
+                    value={editForm.role || 'seller'}
+                    onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 font-bold"
+                  >
+                    <option value="seller">Sotuvchi (POS oynasi)</option>
+                    <option value="manager">Menejer / Boshqaruvchi</option>
+                    <option value="cashier">Kassir (Moliya & Kassa)</option>
+                    <option value="warehouse">Omborchi (Ombor nazorati)</option>
+                    <option value="technician">Usta-Muhandis (Servis)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Filial
+                  </label>
+                  <select
+                    value={editForm.branch_id || ''}
+                    onChange={e => setEditForm(f => ({ ...f, branch_id: e.target.value }))}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900"
+                  >
+                    <option value="">Barcha filiallar</option>
+                    {branches.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Oylik oklad (so'm)
+                  </label>
+                  <input
+                    type="number"
+                    value={editForm.base_salary || 0}
+                    onChange={e => setEditForm(f => ({ ...f, base_salary: e.target.value }))}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Bonus / Komissiya (%)
+                  </label>
+                  <input
+                    type="number"
+                    value={editForm.commission_pct || 0}
+                    onChange={e => setEditForm(f => ({ ...f, commission_pct: e.target.value }))}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold border border-slate-300 text-slate-700 hover:bg-slate-100"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md"
+                >
+                  O'zgarishlarni Saqlash
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

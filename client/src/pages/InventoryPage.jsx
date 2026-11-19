@@ -46,6 +46,8 @@ export default function InventoryPage() {
   const [search, setSearch] = useState('');
   const [filterCondition, setFilterCondition] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterBrand, setFilterBrand] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
 
   // New Device Modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -165,7 +167,7 @@ export default function InventoryPage() {
   const loadInventory = async () => {
     setLoading(true);
     try {
-      const dRes = await apiRequest(`/devices?branch_id=${selectedBranch}&status=${filterStatus}&condition_type=${filterCondition}&search=${encodeURIComponent(search)}&limit=100`);
+      const dRes = await apiRequest(`/devices?branch_id=${selectedBranch}&status=${filterStatus}&condition_type=${filterCondition}&brand_id=${filterBrand}&search=${encodeURIComponent(search)}&limit=100`);
       if (dRes.success) setDevices(dRes.data);
 
       const aRes = await apiRequest(`/inventory/accessories?branch_id=${selectedBranch}`);
@@ -191,7 +193,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     loadInventory();
-  }, [selectedBranch, filterStatus, filterCondition]);
+  }, [selectedBranch, filterStatus, filterCondition, filterBrand]);
 
   // Handle Search Debounce
   useEffect(() => {
@@ -406,11 +408,24 @@ export default function InventoryPage() {
               />
             </div>
 
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {/* Brand filter */}
+              <select
+                value={filterBrand}
+                onChange={(e) => setFilterBrand(e.target.value)}
+                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-medium focus:outline-none cursor-pointer"
+              >
+                <option value="all">Barcha brendlar</option>
+                {brands.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+
+              {/* Status filter */}
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-medium focus:outline-none"
+                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-medium focus:outline-none cursor-pointer"
               >
                 <option value="all">Barcha holatlar</option>
                 <option value="omborda">Omborda mavjud</option>
@@ -420,16 +435,30 @@ export default function InventoryPage() {
                 <option value="zahirada">Zahirada (Bron)</option>
               </select>
 
+              {/* Condition filter */}
               <select
                 value={filterCondition}
                 onChange={(e) => setFilterCondition(e.target.value)}
-                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-medium focus:outline-none"
+                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 font-medium focus:outline-none cursor-pointer"
               >
                 <option value="all">Barcha turlar</option>
                 <option value="Yangi (muhrlangan)">Yangi (muhrlangan)</option>
                 <option value="Yangi (ochilgan)">Yangi (ochilgan)</option>
                 <option value="B/U (ishlatilgan)">B/U (ishlatilgan)</option>
                 <option value="Ta'mirdan chiqqan">Ta'mirdan chiqqan</option>
+              </select>
+
+              {/* Sorting selector (Saralash) */}
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-xl border border-indigo-200 dark:border-indigo-800 font-bold focus:outline-none cursor-pointer"
+              >
+                <option value="newest">🕒 Saralash: Eng yangilari</option>
+                <option value="price_desc">💰 Narx: Qimmatdan arzonga</option>
+                <option value="price_asc">💵 Narx: Arzondan qimmatga</option>
+                <option value="model_asc">🔤 Model: A dan Z gacha</option>
+                <option value="battery_desc">🔋 Batareya: Yuqoridan pastga</option>
               </select>
             </div>
 
@@ -452,14 +481,26 @@ export default function InventoryPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {devices.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
-                        Telefonlar topilmadi
-                      </td>
-                    </tr>
-                  ) : (
-                    devices.map(d => (
+                  {(() => {
+                    const sortedDevices = [...devices].sort((a, b) => {
+                      if (sortBy === 'price_desc') return (Number(b.selling_price) || 0) - (Number(a.selling_price) || 0);
+                      if (sortBy === 'price_asc') return (Number(a.selling_price) || 0) - (Number(b.selling_price) || 0);
+                      if (sortBy === 'model_asc') return (a.model_name || '').localeCompare(b.model_name || '');
+                      if (sortBy === 'battery_desc') return (Number(b.battery_pct) || 0) - (Number(a.battery_pct) || 0);
+                      return b.id - a.id;
+                    });
+
+                    if (sortedDevices.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
+                            Telefonlar topilmadi
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return sortedDevices.map(d => (
                       <tr key={d.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
                         
                         <td className="py-3 px-4">
@@ -577,8 +618,8 @@ export default function InventoryPage() {
                         </td>
 
                       </tr>
-                    ))
-                  )}
+                    ));
+                  })()}
                 </tbody>
               </table>
             </div>

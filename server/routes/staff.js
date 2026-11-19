@@ -72,6 +72,71 @@ router.post('/', authenticateToken, requireRoles('admin'), (req, res) => {
   res.json({ success: true, message: "Yangi xodim muvaffaqiyatli qo\"shildi", userId: result.lastInsertRowid });
 });
 
+// Update staff details
+router.put('/:id', authenticateToken, requireRoles('admin'), (req, res) => {
+  const { id } = req.params;
+  const { name, phone, branch_id, role, salary_type, base_salary, commission_pct, notes } = req.body;
+
+  const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ success: false, error: "Xodim topilmadi" });
+
+  db.prepare(`
+    UPDATE users SET
+      name = COALESCE(?, name),
+      phone = COALESCE(?, phone),
+      branch_id = COALESCE(?, branch_id),
+      role = COALESCE(?, role),
+      salary_type = COALESCE(?, salary_type),
+      base_salary = COALESCE(?, base_salary),
+      commission_pct = COALESCE(?, commission_pct),
+      notes = COALESCE(?, notes),
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    name || null,
+    phone || null,
+    branch_id || null,
+    role || null,
+    salary_type || null,
+    base_salary !== undefined ? Number(base_salary) : null,
+    commission_pct !== undefined ? Number(commission_pct) : null,
+    notes || null,
+    id
+  );
+
+  logAudit(req, 'UPDATE', 'user', id, existing, req.body);
+  res.json({ success: true, message: "Xodim ma'lumotlari yangilandi" });
+});
+
+// Set / Reset staff password
+router.put('/:id/password', authenticateToken, requireRoles('admin'), (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body;
+
+  if (!password || password.length < 4) {
+    return res.status(400).json({ success: false, error: "Yangi parol kamida 4 belgidan iborat bo'lishi kerak" });
+  }
+
+  const existing = db.prepare('SELECT id, name, login FROM users WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ success: false, error: "Xodim topilmadi" });
+
+  const salt = bcrypt.genSaltSync(10);
+  const passwordHash = bcrypt.hashSync(password, salt);
+
+  db.prepare(`
+    UPDATE users SET
+      password_hash = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(passwordHash, id);
+
+  // Invalidate old sessions so user must log in with new password
+  db.prepare('UPDATE sessions SET is_revoked = 1 WHERE user_id = ?').run(id);
+
+  logAudit(req, 'PASSWORD_RESET', 'user', id, null, `Parol ma'mur tomonidan yangilandi: ${existing.name}`);
+  res.json({ success: true, message: `${existing.name} uchun yangi parol muvaffaqiyatli o'rnatildi` });
+});
+
 // Terminate / Archive staff ("Ishdan ketgan xodim" - Never delete!)
 router.post('/:id/terminate', authenticateToken, requireRoles('admin'), (req, res) => {
   const { id } = req.params;
