@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { 
   Smartphone, Plus, Search, Filter, QrCode, ArrowRightLeft, 
   CheckCircle, AlertTriangle, Battery, ShieldCheck, Tag, Download,
-  Layers, Package, Check, X, FileText, Clock, Image as ImageIcon
+  Layers, Package, Check, X, FileText, Clock, Image as ImageIcon,
+  FileSpreadsheet
 } from 'lucide-react';
 import { apiRequest } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import { PhoneThumbnail, PhotoPreviewModal, ImageUploader } from '../utils/phoneImages';
 import DeviceQrLabelModal from '../components/DeviceQrLabelModal';
+import ExcelImportExportModal from '../components/ExcelImportExportModal';
 
 // Client-side Luhn Algorithm checker for instant live form feedback
 function checkLuhn(imei) {
@@ -52,6 +54,7 @@ export default function InventoryPage() {
 
   // New Device Modal
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showExcelModal, setShowExcelModal] = useState(false);
   const [form, setForm] = useState({
     model_id: '',
     color_id: '',
@@ -347,13 +350,15 @@ export default function InventoryPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <a
-            href="/api/reports/export/devices"
-            className="btn-secondary"
+          <button
+            type="button"
+            onClick={() => setShowExcelModal(true)}
+            className="btn-secondary flex items-center gap-2 cursor-pointer font-bold"
+            title="Excel shablonni yuklab olish va to'ldirib qayta yuklash"
           >
-            <Download className="w-4 h-4" />
-            <span>Excelga Yuklash</span>
-          </a>
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Excel Shablon & Import</span>
+          </button>
 
           <button
             onClick={() => setShowAddModal(true)}
@@ -1256,6 +1261,15 @@ export default function InventoryPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Excel Import & Export Modal */}
+      {showExcelModal && (
+        <ExcelImportExportModal
+          devices={devices}
+          onImportSuccess={loadInventory}
+          onClose={() => setShowExcelModal(false)}
+        />
       )}
 
       {/* Photo Preview Lightbox */}

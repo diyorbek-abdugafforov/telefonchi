@@ -152,6 +152,149 @@ router.get('/:idOrImei', authenticateToken, (req, res) => {
   });
 });
 
+// Bulk import devices from Excel / JSON
+router.post('/bulk-import', authenticateToken, (req, res) => {
+  const { devices = [], branch_id } = req.body;
+  if (!Array.isArray(devices) || devices.length === 0) {
+    return res.status(400).json({ success: false, error: "Yuklash uchun kamida 1 ta telefon ma'lumoti kerak" });
+  }
+
+  const targetBranch = branch_id || req.user.branch_id || 1;
+  const inserted = [];
+  const errors = [];
+
+  const importTx = db.transaction(() => {
+    for (let i = 0; i < devices.length; i++) {
+      const row = devices[i];
+      const rowNum = i + 1;
+      const imei = String(row.imei1 || row.imei || '').trim();
+
+      if (!imei) {
+        errors.push({ row: rowNum, error: "IMEI ko'rsatilmagan" });
+        continue;
+      }
+
+      // Check unique IMEI
+      const exists = db.prepare('SELECT id FROM devices WHERE imei1 = ?').get(imei);
+      if (exists) {
+        errors.push({ row: rowNum, imei, error: "Bu IMEI bazada allaqachon mavjud" });
+        continue;
+      }
+
+      // Resolve or create brand & model
+      let modelId = row.model_id;
+      if (!modelId && (row.model_name || row.model)) {
+        const modelName = String(row.model_name || row.model).trim();
+        const brandName = String(row.brand_name || row.brand || 'Apple').trim();
+        
+        let brand = db.prepare('SELECT id FROM brands WHERE name LIKE ?').get(brandName);
+        if (!brand) {
+          const bRes = db.prepare('INSERT INTO brands (name) VALUES (?)').run(brandName);
+          brand = { id: bRes.lastInsertRowid };
+        }
+
+        let model = db.prepare('SELECT id, image_url FROM models WHERE name LIKE ? AND brand_id = ?').get(modelName, brand.id);
+        if (!model) {
+          const mRes = db.prepare('INSERT INTO models (brand_id, name, storage, release_year) VALUES (?, ?, ?, ?)').run(
+            brand.id,
+            modelName,
+            row.storage || '256GB',
+            new Date().getFullYear()
+          );
+          model = { id: mRes.lastInsertRowid, image_url: null };
+        }
+        modelId = model.id;
+      }
+
+      if (!modelId) {
+        errors.push({ row: rowNum, imei, error: "Model nomi aniqlanmadi" });
+        continue;
+      }
+
+      // Resolve color
+      let colorId = row.color_id || 1;
+      if (row.color_name || row.color) {
+        const colorName = String(row.color_name || row.color).trim();
+        const colorObj = db.prepare('SELECT id FROM colors WHERE name LIKE ?').get(colorName);
+        if (colorObj) colorId = colorObj.id;
+      }
+
+      const purchase_price = Number(row.purchase_price || row.cost_price || 0);
+      const extra_costs = Number(row.extra_costs || 0);
+      const cost_price = purchase_price + extra_costs;
+      const selling_price = Number(row.selling_price || 0);
+      const min_price = Number(row.min_price || selling_price);
+      const battery_pct = Number(row.battery_pct || 100);
+      const condition_type = row.condition_type || 'Yangi (muhrlangan)';
+      const warranty_months = Number(row.warranty_months || 12);
+      const notes = row.notes || "Excel ommaviy yuklash orqali kiritilgan";
+
+      // Inherit model image if available
+      const modelRow = db.prepare('SELECT image_url FROM models WHERE id = ?').get(modelId);
+      const imageUrl = row.image_url || modelRow?.image_url || null;
+
+      const resInsert = db.prepare(`
+        INSERT INTO devices (
+          model_id, color_id, country_version, imei1, imei2,
+          serial_number, condition_type, battery_pct, condition_grade,
+          icloud_clean, face_id_works, sim_unlocked, purchase_price, extra_costs,
+          cost_price, selling_price, min_price, branch_id, status,
+          warranty_months, photos, image_url, notes, created_by
+        ) VALUES (
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, 'A+',
+          1, 1, 1, ?, ?,
+          ?, ?, ?, ?, 'omborda',
+          ?, ?, ?, ?, ?
+        )
+      `).run(
+        modelId,
+        colorId,
+        row.country_version || 'AQSH',
+        imei,
+        row.imei2 || null,
+        row.serial_number || null,
+        condition_type,
+        battery_pct,
+        purchase_price,
+        extra_costs,
+        cost_price,
+        selling_price,
+        min_price,
+        targetBranch,
+        warranty_months,
+        JSON.stringify(imageUrl ? [imageUrl] : []),
+        imageUrl,
+        notes,
+        req.user.id
+      );
+
+      // Log stock movement
+      db.prepare(`
+        INSERT INTO stock_movements (device_id, to_branch_id, type, notes, created_by)
+        VALUES (?, ?, 'purchase', 'Excel ommaviy yuklash orqali kiritildi', ?)
+      `).run(resInsert.lastInsertRowid, targetBranch, req.user.id);
+
+      inserted.push({ id: resInsert.lastInsertRowid, imei });
+    }
+  });
+
+  try {
+    importTx();
+    logAudit(req, 'BULK_IMPORT', 'devices', null, null, `${inserted.length} ta telefon Exceldan yuklandi`);
+    res.json({
+      success: true,
+      message: `${inserted.length} ta telefon muvaffaqiyatli omborga kiritildi!`,
+      insertedCount: inserted.length,
+      errorsCount: errors.length,
+      errors
+    });
+  } catch (err) {
+    console.error('Bulk import error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Create new device card
 router.post('/', authenticateToken, (req, res) => {
   const {
