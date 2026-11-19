@@ -20,7 +20,25 @@ export async function apiRequest(endpoint, options = {}) {
 
   try {
     const res = await fetch(`${API_URL}${endpoint}`, config);
-    const data = await res.json();
+    
+    let data;
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      const text = await res.text();
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error("Backend server topilmadi (404 xatosi). Vercel faqat frontendni ochgan, backend server ulanmagan.");
+        }
+        throw new Error(`Serverda xatolik (${res.status}): ${text.slice(0, 80)}`);
+      }
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error("Serverdan noto'g'ri formatdagi javob qaytdi");
+      }
+    }
 
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
